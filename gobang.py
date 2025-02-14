@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+# @Time    : 2025/2/14 14:14:49
+# @Author  : 墨烟行(GitHub UserName: CloudSwordSage)
+# @File    : gobang.py
+# @Desc    : 基于 QT6 的 GUI 界面
+
+
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMessageBox, QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QPainter, QColor, QPen
@@ -49,7 +56,7 @@ class GobangWindow(QMainWindow):
     def start_game(self, ai_first=False):
         self.ai_player = 1 if ai_first else 2
         self.board.reset()
-        self.ai = MiniMax(max_depth=800, n_jobs=-1)
+        self.ai = MiniMax(max_depth=2)
         if ai_first:
             self.ai_move()
 
@@ -113,10 +120,10 @@ class GobangWindow(QMainWindow):
         x = (event.pos().x()) // self.cell_size
         y = (event.pos().y()) // self.cell_size
         if 0 <= x < self.board.config.size and 0 <= y < self.board.config.size:
-            self.hover_pos = (x, y)  # 更新鼠标悬停位置
+            self.hover_pos = (x, y)
         else:
-            self.hover_pos = None  # 如果鼠标不在棋盘范围内，清除悬停位置
-        self.update()  # 重新绘制界面
+            self.hover_pos = None
+        self.update()
 
 
 if __name__ == '__main__':

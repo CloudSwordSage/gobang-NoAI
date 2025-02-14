@@ -5,6 +5,7 @@
 # @Desc    : 游戏对象
 
 
+import itertools
 import numpy as np
 from dataclasses import dataclass
 from collections import deque
@@ -12,7 +13,7 @@ from collections import deque
 @dataclass
 class GameConfig:
     size: int = 15
-    radius: int = 3
+    radius: int = -1
 
 class Game:
     def __init__(self, config = GameConfig()):
@@ -41,21 +42,29 @@ class Game:
             self.is_over = True
             return
 
-        if 0 not in self.board.flatten():
+        count = sum(
+            self.board[i, j] == 0
+            for i, j in itertools.product(
+                range(self.config.size), range(self.config.size)
+            )
+        )
+        if count == 0:
             self.winner = -1
             self.is_over = True
             return
 
-        self.current_player = 2 if self.current_player == 1 else 1
+        self.current_player = 3 - self.current_player
         return
     
     def undo_move(self):
         """撤销一步"""
         if self.last_move == []:
             return
-        self.board[self.last_move[-1][0], self.last_move[-1][1]] = 0
-        self.last_move.pop()
+        x, y = self.last_move.pop()
+        self.board[x, y] = 0
         self.current_player = 3 - self.current_player
+        self.is_over = False
+        self.winner = 0
     
     def get_patterns(self, player):
         """返回当前玩家所有模式及其出现次数"""
@@ -63,8 +72,10 @@ class Game:
             '五连': 0,
             '活四': 0,
             '冲四': 0,
+            '跳四': 0,
             '活三': 0,
-            '冲三': 0,
+            '眠三': 0,
+            '跳三': 0,
             '活二': 0,
             '冲二': 0
         }
@@ -79,8 +90,9 @@ class Game:
                 for dx, dy in directions:
                     if self._is_new_direction(i, j, dx, dy):
                         line = self._get_line(i, j, dx, dy, 6)
-                        if pattern := self._analyze_line(line, player):
-                            patterns[pattern] += 1
+                        pattern = self._analyze_line(line, player)
+                        for key in patterns:
+                            patterns[key] += pattern[key]
 
         return patterns
 
@@ -105,24 +117,53 @@ class Game:
         """分析单行模式"""
         line_str = ''.join(['1' if p == player else '0' if p == 0 else '2' for p in line])
 
+        line_patterns = {
+            '五连': 0,
+            '活四': 0,
+            '冲四': 0,
+            '跳四': 0,
+            '活三': 0,
+            '眠三': 0,
+            '跳三': 0,
+            '活二': 0,
+            '冲二': 0
+        }
+        
         if '11111' in line_str:
-            return '五连'
+            line_patterns['五连'] = 1
+            return line_patterns
 
         if '011110' in line_str:
-            return '活四'
+            line_patterns['活四'] = line_str.count('011110')
 
         if '011112' in line_str or '211110' in line_str:
-            return '冲四'
+            line_patterns['冲四'] += line_str.count('011112')
+            line_patterns['冲四'] += line_str.count('211110')
+        
+        if '11011' in line_str or '10111' in line_str or '11101' in line_str:
+            line_patterns['跳四'] += line_str.count('11011')
+            line_patterns['跳四'] += line_str.count('10111')
+            line_patterns['跳四'] += line_str.count('11101')
 
         if '01110' in line_str:
-            return '活三'
+            line_patterns['活三'] = line_str.count('01110')
 
         if '01112' in line_str or '21110' in line_str:
-            return '冲三'
+            line_patterns['眠三'] += line_str.count('01112')
+            line_patterns['眠三'] += line_str.count('21110')
 
+        if '1011' in line_str or '1101' in line_str:
+            line_patterns['跳三'] += line_str.count('1011')
+            line_patterns['跳三'] += line_str.count('1101')
+        
         if '0110' in line_str:
-            return '活二'
-        return '冲二' if '0112' in line_str or '2110' in line_str else None
+            line_patterns['活二'] = line_str.count('0110')
+        
+        if '0112' in line_str or '2110' in line_str:
+            line_patterns['冲二'] += line_str.count('0112')
+            line_patterns['冲二'] += line_str.count('2110')
+        
+        return line_patterns
 
     def check_win(self):
         x, y = self.last_move[-1]
@@ -161,27 +202,42 @@ class Game:
         score = 0
 
         # 根据模式分配分数
-        score += player_patterns['五连'] * 100000
-        score += player_patterns['活四'] * 10000
-        score += player_patterns['冲四'] * 5000
-        score += player_patterns['活三'] * 1000
-        score += player_patterns['冲三'] * 500
-        score += player_patterns['活二'] * 100
-        score += player_patterns['冲二'] * 50
+        pattern_weights = {
+            '五连': 100000,
+            '活四': 10000,
+            '冲四': 5000,
+            '跳四': 4000,  # 新增跳四权重
+            '活三': 1000,
+            '眠三': 500,
+            '跳三': 300,   # 新增跳三权重
+            '活二': 100,
+            '冲二': 50
+        }
 
-        score -= opponent_patterns['五连'] * 100000
-        score -= opponent_patterns['活四'] * 10000
-        score -= opponent_patterns['冲四'] * 5000
-        score -= opponent_patterns['活三'] * 1000
-        score -= opponent_patterns['冲三'] * 500
-        score -= opponent_patterns['活二'] * 100
-        score -= opponent_patterns['冲二'] * 50
+        # 计算玩家得分
+        score = sum(player_patterns[pattern] * pattern_weights[pattern] for pattern in player_patterns)
+        # 计算对手得分（扣分）
+        score -= sum(opponent_patterns[pattern] * pattern_weights[pattern] for pattern in opponent_patterns)
+
+
+        center_weight = 1.2  # 中心位置权重
+        for i, j in itertools.product(range(self.config.size), range(self.config.size)):
+            # 如果棋子是当前玩家，并且棋子位于棋盘中心，则加分
+            if self.board[i, j] == player:
+                if (self.config.size // 3 <= i <= 2 * self.config.size // 3) and (self.config.size // 3 <= j <= 2 * self.config.size // 3):
+                    score += center_weight * 10  # 中心位置的棋子加分
+
+            # 如果棋子是对手，并且位于中心区域，则扣分
+            elif self.board[i, j] == opponent:
+                if (self.config.size // 3 <= i <= 2 * self.config.size // 3) and (self.config.size // 3 <= j <= 2 * self.config.size // 3):
+                    score -= center_weight * 10
 
         return score
+
     
     @property
     def availables(self):
-        if self.last_move == []:
+        if self.last_move == [] or self.config.radius == -1:
             return [(i, j) for i in range(self.config.size) for j in range(self.config.size) if self.board[i, j] == 0]
             
         x, y = self.last_move[-1]
@@ -202,5 +258,6 @@ class Game:
     @property
     def get_current_player(self):
         return self.current_player
+    
     def reset(self):
         self.init_board()
